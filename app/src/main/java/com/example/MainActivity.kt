@@ -6,7 +6,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.example.ui.RoutinaryApp
 import com.example.ui.RoutinaryContainer
-import com.example.ui.theme.RoutinaryTheme
 
 class MainActivity : ComponentActivity() {
     private val container by lazy { RoutinaryContainer(applicationContext) }
@@ -15,9 +14,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            RoutinaryTheme {
-                RoutinaryApp(container = container)
-            }
+            RoutinaryApp(container = container)
         }
     }
 }

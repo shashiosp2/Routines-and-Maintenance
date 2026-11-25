@@ -13,4 +13,6 @@
     <string name="cd_resume_routine">Resume routine</string>
     <string name="cd_skip_step">Skip current step</string>
     <string name="cd_back">Navigate back</string>
+    <string name="cd_switch_to_light">Switch to light mode</string>
+    <string name="cd_switch_to_dark">Switch to dark mode</string>
 </resources>

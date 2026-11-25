@@ -18,6 +18,12 @@ enum class StorageMode {
     EXTERNAL_VAULT
 }
 
+enum class ThemePreference {
+    SYSTEM,
+    LIGHT,
+    DARK
+}
+
 data class VaultSettings(
     val storageMode: StorageMode = StorageMode.INTERNAL_SAMPLE,
     val vaultRootPath: String = "${Environment.getExternalStorageDirectory().absolutePath}/Documents/Obsidian",
@@ -28,7 +34,8 @@ data class VaultSettings(
     val historyUri: String? = null,
     val routinesUri: String? = null,
     val overtimeSoundEnabled: Boolean = true,
-    val overtimeVibrateEnabled: Boolean = true
+    val overtimeVibrateEnabled: Boolean = true,
+    val themePreference: ThemePreference = ThemePreference.SYSTEM
 )
 
 class VaultSettingsRepository(private val context: Context) {
@@ -44,6 +51,7 @@ class VaultSettingsRepository(private val context: Context) {
         val ROUTINES_URI = stringPreferencesKey("routines_uri")
         val OVERTIME_SOUND = booleanPreferencesKey("overtime_sound_enabled")
         val OVERTIME_VIBRATE = booleanPreferencesKey("overtime_vibrate_enabled")
+        val THEME_PREFERENCE = stringPreferencesKey("theme_preference")
     }
 
     val settingsFlow: Flow<VaultSettings> = context.vaultDataStore.data.map { prefs ->
@@ -51,6 +59,9 @@ class VaultSettingsRepository(private val context: Context) {
         val mode = prefs[Keys.STORAGE_MODE]?.let {
             runCatching { StorageMode.valueOf(it) }.getOrNull()
         } ?: StorageMode.INTERNAL_SAMPLE
+        val themePref = prefs[Keys.THEME_PREFERENCE]?.let {
+            runCatching { ThemePreference.valueOf(it) }.getOrNull()
+        } ?: ThemePreference.SYSTEM
 
         VaultSettings(
             storageMode = mode,
@@ -62,7 +73,8 @@ class VaultSettingsRepository(private val context: Context) {
             historyUri = prefs[Keys.HISTORY_URI]?.takeIf { it.isNotBlank() },
             routinesUri = prefs[Keys.ROUTINES_URI]?.takeIf { it.isNotBlank() },
             overtimeSoundEnabled = prefs[Keys.OVERTIME_SOUND] ?: true,
-            overtimeVibrateEnabled = prefs[Keys.OVERTIME_VIBRATE] ?: true
+            overtimeVibrateEnabled = prefs[Keys.OVERTIME_VIBRATE] ?: true,
+            themePreference = themePref
         )
     }
 
@@ -71,6 +83,9 @@ class VaultSettingsRepository(private val context: Context) {
             val currentMode = prefs[Keys.STORAGE_MODE]?.let {
                 runCatching { StorageMode.valueOf(it) }.getOrNull()
             } ?: StorageMode.INTERNAL_SAMPLE
+            val currentThemePref = prefs[Keys.THEME_PREFERENCE]?.let {
+                runCatching { ThemePreference.valueOf(it) }.getOrNull()
+            } ?: ThemePreference.SYSTEM
             val defaults = VaultSettings()
             val current = VaultSettings(
                 storageMode = currentMode,
@@ -82,7 +97,8 @@ class VaultSettingsRepository(private val context: Context) {
                 historyUri = prefs[Keys.HISTORY_URI]?.takeIf { it.isNotBlank() },
                 routinesUri = prefs[Keys.ROUTINES_URI]?.takeIf { it.isNotBlank() },
                 overtimeSoundEnabled = prefs[Keys.OVERTIME_SOUND] ?: true,
-                overtimeVibrateEnabled = prefs[Keys.OVERTIME_VIBRATE] ?: true
+                overtimeVibrateEnabled = prefs[Keys.OVERTIME_VIBRATE] ?: true,
+                themePreference = currentThemePref
             )
             val updated = transform(current)
             prefs[Keys.STORAGE_MODE] = updated.storageMode.name
@@ -95,6 +111,7 @@ class VaultSettingsRepository(private val context: Context) {
             if (updated.routinesUri != null) prefs[Keys.ROUTINES_URI] = updated.routinesUri else prefs.remove(Keys.ROUTINES_URI)
             prefs[Keys.OVERTIME_SOUND] = updated.overtimeSoundEnabled
             prefs[Keys.OVERTIME_VIBRATE] = updated.overtimeVibrateEnabled
+            prefs[Keys.THEME_PREFERENCE] = updated.themePreference.name
         }
     }
 }

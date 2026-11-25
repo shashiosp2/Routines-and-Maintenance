@@ -1,5 +1,6 @@
 package com.example.ui
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -9,8 +10,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.EventNote
 import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.EventNote
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Timer
@@ -50,12 +53,14 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.R
+import com.example.data.ThemePreference
 import com.example.ui.maintenance.MaintenanceScreen
 import com.example.ui.maintenance.MaintenanceViewModel
 import com.example.ui.routines.RoutineViewModel
 import com.example.ui.routines.RoutinesScreen
 import com.example.ui.settings.SettingsScreen
 import com.example.ui.settings.SettingsViewModel
+import com.example.ui.theme.RoutinaryTheme
 
 object RoutinaryRoutes {
     const val MAINTENANCE = "maintenance"
@@ -109,6 +114,13 @@ fun RoutinaryApp(
         }
     }
 
+    val systemDark = isSystemInDarkTheme()
+    val isDarkTheme = when (settingsState.settings.themePreference) {
+        ThemePreference.SYSTEM -> systemDark
+        ThemePreference.LIGHT -> false
+        ThemePreference.DARK -> true
+    }
+
     val isSettingsRoute = currentRoute == RoutinaryRoutes.SETTINGS
 
     fun navigateToPrimaryTab(route: String) {
@@ -121,46 +133,68 @@ fun RoutinaryApp(
         }
     }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val useNavigationRail = maxWidth >= 720.dp && !isSettingsRoute
+    RoutinaryTheme(darkTheme = isDarkTheme) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val useNavigationRail = maxWidth >= 720.dp && !isSettingsRoute
 
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            contentWindowInsets = WindowInsets(0, 0, 0, 0),
-            snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-            topBar = {
-                CenterAlignedTopAppBar(
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    navigationIcon = {
-                        if (isSettingsRoute) {
-                            IconButton(
-                                onClick = { navController.popBackStack() },
-                                modifier = Modifier.testTag("settings_back_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                                    contentDescription = stringResource(R.string.cd_back)
-                                )
-                            }
-                        } else {
-                            IconButton(
-                                onClick = {
-                                    when (currentRoute) {
-                                        RoutinaryRoutes.MAINTENANCE -> maintenanceVm.refresh()
-                                        RoutinaryRoutes.ROUTINES -> routineVm.refresh()
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+                topBar = {
+                    CenterAlignedTopAppBar(
+                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        ),
+                        navigationIcon = {
+                            if (isSettingsRoute) {
+                                IconButton(
+                                    onClick = { navController.popBackStack() },
+                                    modifier = Modifier.testTag("settings_back_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                        contentDescription = stringResource(R.string.cd_back)
+                                    )
+                                }
+                            } else {
+                                Row {
+                                    IconButton(
+                                        onClick = {
+                                            when (currentRoute) {
+                                                RoutinaryRoutes.MAINTENANCE -> maintenanceVm.refresh()
+                                                RoutinaryRoutes.ROUTINES -> routineVm.refresh()
+                                            }
+                                        },
+                                        modifier = Modifier.testTag("top_reload_button")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Refresh,
+                                            contentDescription = stringResource(R.string.cd_reload)
+                                        )
                                     }
-                                },
-                                modifier = Modifier.testTag("top_reload_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Refresh,
-                                    contentDescription = stringResource(R.string.cd_reload)
-                                )
+                                    IconButton(
+                                        onClick = { settingsVm.toggleTheme(isDarkTheme) },
+                                        modifier = Modifier.testTag("theme_toggle_button")
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isDarkTheme) {
+                                                Icons.Rounded.LightMode
+                                            } else {
+                                                Icons.Rounded.DarkMode
+                                            },
+                                            contentDescription = stringResource(
+                                                if (isDarkTheme) {
+                                                    R.string.cd_switch_to_light
+                                                } else {
+                                                    R.string.cd_switch_to_dark
+                                                }
+                                            )
+                                        )
+                                    }
+                                }
                             }
-                        }
-                    },
+                        },
                     title = {
                         val titleText = when (currentRoute) {
                             RoutinaryRoutes.ROUTINES -> "My Routines"
@@ -335,6 +369,7 @@ fun RoutinaryApp(
                     }
                 }
             }
+        }
         }
     }
 }

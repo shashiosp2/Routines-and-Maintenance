@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.StorageMode
+import com.example.data.ThemePreference
 import com.example.data.VaultFileKind
 import com.example.data.VaultFileStore
 import com.example.data.VaultSettings
@@ -166,6 +167,13 @@ class SettingsViewModel(
     fun setOvertimeVibrate(enabled: Boolean) {
         viewModelScope.launch {
             settingsRepository.updateSettings { it.copy(overtimeVibrateEnabled = enabled) }
+        }
+    }
+
+    fun toggleTheme(currentlyDark: Boolean) {
+        viewModelScope.launch {
+            val next = if (currentlyDark) ThemePreference.LIGHT else ThemePreference.DARK
+            settingsRepository.updateSettings { it.copy(themePreference = next) }
         }
     }
 
