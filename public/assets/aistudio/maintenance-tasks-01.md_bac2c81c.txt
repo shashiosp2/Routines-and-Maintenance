@@ -1,0 +1,9 @@
+# Maintenance Tasks 01
+
+| Group | Task | Frequency | Next Due | Last Done |
+| :--- | :--- | :--- | :--- | :--- |
+| Appliances | Clean Coffee Machine | 7 | 2026-04-08 | 2026-04-01 |
+| HVAC | Replace Air Filter | 90 | 2026-04-15 | 2026-01-15 |
+| Flooring | Vacuum Spare Room | 14 | 2026-04-11 | 2026-03-28 |
+| Cleaning | Deep Clean Kitchen | 30 | 2026-04-09 | 2026-03-10 |
+| Cleaning | Wipe Baseboards | 60 | 2026-04-21 | 2026-02-20 |

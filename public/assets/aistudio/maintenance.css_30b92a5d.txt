@@ -1,0 +1,74 @@
+/* --- Maintenance Calendar Styles --- */
+.maintenance-tasks-container {
+	padding: 10px;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+}
+
+.mc-table-container {
+	width: 100%;
+	overflow-x: auto;
+	flex-grow: 1;
+}
+
+.maintenance-table {
+	width: 100%;
+	min-width: 800px; /* Force minimum width to allow scrolling instead of squishing */
+	border-collapse: collapse;
+}
+
+.maintenance-table td {
+	white-space: nowrap; /* Prevent most columns from wrapping */
+}
+
+.maintenance-table td:nth-child(3) {
+	white-space: normal; /* Allow Task name to wrap if needed, but still respects table min-width */
+}
+
+.mc-header-bar {
+	display: flex;
+	align-items: center;
+	gap: 15px;
+	margin-bottom: 20px;
+	flex-shrink: 0;
+}
+
+.mc-date-header {
+	font-weight: bold;
+	font-size: 1.2em;
+	color: var(--text-error);
+}
+
+.maintenance-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.maintenance-table th, .maintenance-table td {
+	padding: 8px;
+	text-align: left;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.sortable {
+	cursor: pointer;
+}
+
+.sortable:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.pastel-red { background-color: rgba(255, 100, 100, 0.3); }
+.pastel-orange { background-color: rgba(255, 165, 0, 0.3); }
+.pastel-yellow { background-color: rgba(255, 255, 0, 0.3); }
+.pastel-white { background-color: transparent; }
+
+.mc-action-buttons {
+	display: flex;
+	gap: 5px;
+}
+
+.add-row input {
+	width: 100%;
+}

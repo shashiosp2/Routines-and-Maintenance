@@ -1,0 +1,319 @@
+import {
+	App,
+	ItemView,
+	PluginSettingTab,
+	Setting,
+	WorkspaceLeaf,
+	TFile,
+	Notice,
+	moment,
+	setIcon,
+	TAbstractFile
+} from 'obsidian';
+import type { HorizonSettings } from '../shared/types';
+
+export interface MaintenanceTask {
+	priority: number;
+	group: string;
+	name: string;
+	frequency: number;
+	nextDue: string;
+	lastDone: string;
+	area: string;
+	lineIndex: number;
+	daysToDue: number;
+}
+
+export const VIEW_TYPE_MAINTENANCE = "maintenance-tasks-view";
+
+export class MaintenanceTasksView extends ItemView {
+	plugin: any; // Will be typed properly in the shared context if needed, or cast
+	sortColumn: keyof MaintenanceTask = 'priority';
+	sortOrder: 'asc' | 'desc' = 'asc';
+	isRendering: boolean = false;
+
+	constructor(leaf: WorkspaceLeaf, plugin: any) {
+		super(leaf);
+		this.plugin = plugin;
+	}
+
+	getViewType() {
+		return VIEW_TYPE_MAINTENANCE;
+	}
+
+	getDisplayText() {
+		return "Maintenance Tasks";
+	}
+
+	async onOpen() {
+		this.render();
+	}
+
+	async render() {
+		if (this.isRendering) return;
+		this.isRendering = true;
+
+		try {
+			const container = this.contentEl;
+			container.empty();
+			container.addClass('maintenance-tasks-container');
+
+			const headerDiv = container.createDiv('header-bar');
+			
+			const refreshBtn = headerDiv.createEl('button', { cls: 'refresh-btn' });
+			setIcon(refreshBtn, 'refresh-cw');
+			refreshBtn.onclick = () => this.render();
+
+			const today = moment().format('YYYY-MM-DD');
+			headerDiv.createSpan({ text: `Current Date: ${today}`, cls: 'date-header' });
+
+			const allTasks: MaintenanceTask[] = [];
+
+			const filePath = this.plugin.settings.maintenanceTaskFile;
+			if (filePath) {
+				const file = this.app.vault.getAbstractFileByPath(filePath);
+				if (file instanceof TFile) {
+					const content = await this.app.vault.read(file);
+					const tasks = this.parseMarkdownTable(content, file.basename, filePath);
+					allTasks.push(...tasks);
+				}
+			}
+
+			if (allTasks.length === 0 && !filePath) {
+				container.createEl('h3', { text: 'No maintenance task file configured. Please check your settings.' });
+				return;
+			}
+
+			const tableContainer = container.createDiv('mc-table-container');
+			this.renderMainTable(tableContainer, allTasks);
+		} finally {
+			this.isRendering = false;
+		}
+	}
+
+	parseMarkdownTable(content: string, areaName: string, filePath: string): MaintenanceTask[] {
+		const lines = content.split('\n');
+		const tasks: MaintenanceTask[] = [];
+		let tableStarted = false;
+		const today = moment().startOf('day');
+
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i].trim();
+			if (line.startsWith('|') && line.includes('|')) {
+				if (line.toLowerCase().includes('group') && line.toLowerCase().includes('task')) {
+					tableStarted = true;
+					i++;
+					continue;
+				}
+
+				if (tableStarted) {
+					const parts = line.split('|').map(s => s.trim()).filter(s => s !== '');
+					// New Order: | Priority | Group | Task | Frequency | Next Due | Last Done |
+					if (parts.length >= 6) {
+						const nextDueStr = parts[4];
+						const nextDue = moment(nextDueStr);
+						const diff = nextDue.isValid() ? nextDue.diff(today, 'days') : 999;
+
+						tasks.push({
+							priority: parseInt(parts[0]) || 0,
+							group: parts[1],
+							name: parts[2],
+							frequency: parseInt(parts[3]) || 0,
+							nextDue: nextDueStr,
+							lastDone: parts[5],
+							area: areaName,
+							lineIndex: i,
+							daysToDue: diff
+						});
+					}
+				}
+			}
+		}
+		return tasks;
+	}
+
+	renderMainTable(container: Element, tasks: MaintenanceTask[]) {
+		const table = container.createEl('table', 'maintenance-table');
+		const thead = table.createEl('thead');
+		const headerRow = thead.createEl('tr');
+
+		const headers: { label: string, key: keyof MaintenanceTask }[] = [
+			{ label: 'Priority', key: 'priority' },
+			{ label: 'Group', key: 'group' },
+			{ label: 'Task', key: 'name' },
+			{ label: 'Frequency', key: 'frequency' },
+			{ label: 'Days Due', key: 'daysToDue' },
+			{ label: 'Next Due', key: 'nextDue' },
+			{ label: 'Last Done', key: 'lastDone' },
+			{ label: 'Action', key: 'name' }
+		];
+
+		headers.forEach(h => {
+			const th = headerRow.createEl('th', { text: h.label });
+			if (h.label !== 'Action') {
+				th.addClass('sortable');
+				th.onclick = () => {
+					if (this.sortColumn === h.key) {
+						this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc';
+					} else {
+						this.sortColumn = h.key;
+						this.sortOrder = 'asc';
+					}
+					this.render();
+				};
+			}
+		});
+
+		const sortedTasks = [...tasks].sort((a, b) => {
+			let valA = a[this.sortColumn];
+			let valB = b[this.sortColumn];
+			if (this.sortOrder === 'desc') [valA, valB] = [valB, valA];
+			return valA > valB ? 1 : -1;
+		});
+
+		const tbody = table.createEl('tbody');
+		sortedTasks.forEach(task => {
+			const row = tbody.createEl('tr');
+			const diff = task.daysToDue;
+			if (diff < 0) row.addClass('pastel-red');
+			else if (diff === 0) row.addClass('pastel-orange');
+			else if (diff === 1) row.addClass('pastel-yellow');
+			else row.addClass('pastel-white');
+
+			const priorityTd = row.createEl('td');
+			const priorityInput = priorityTd.createEl('input', { 
+				attr: { type: 'number', value: task.priority.toString(), style: 'width: 50px;' } 
+			});
+			priorityInput.onchange = async () => {
+				const newVal = parseInt(priorityInput.value);
+				if (!isNaN(newVal)) {
+					await this.updateTaskPriority(task, newVal);
+				}
+			};
+
+			row.createEl('td', { text: task.group });
+			row.createEl('td', { text: task.name });
+			row.createEl('td', { text: task.frequency.toString() });
+			row.createEl('td', { text: diff === 999 ? '-' : diff.toString() });
+			row.createEl('td', { text: task.nextDue });
+			row.createEl('td', { text: task.lastDone });
+
+			const actionTd = row.createEl('td');
+			const actionContainer = actionTd.createDiv('mc-action-buttons');
+			
+			const doneBtn = actionContainer.createEl('button', { text: 'Done', cls: 'done-btn' });
+			
+			doneBtn.onclick = () => {
+				doneBtn.hide();
+				const sureBtn = actionContainer.createEl('button', { text: 'Sure?', cls: 'sure-btn' });
+				sureBtn.onclick = () => this.markAsDone(task);
+			};
+		});
+
+		// Add Task Row
+		const addRow = tbody.createEl('tr', { cls: 'add-row' });
+		const priorityInput = addRow.createEl('td').createEl('input', { attr: { type: 'number', placeholder: 'Prio', style: 'width: 50px;' } });
+		const groupInput = addRow.createEl('td').createEl('input', { attr: { type: 'text', placeholder: 'Group' } });
+		const nameInput = addRow.createEl('td').createEl('input', { attr: { type: 'text', placeholder: 'New Task' } });
+		const freqInput = addRow.createEl('td').createEl('input', { attr: { type: 'number', placeholder: 'Freq (days)', min: '0' } });
+		addRow.createEl('td'); // Days Due placeholder
+		const dateInputTd = addRow.createEl('td');
+		const dateInput = dateInputTd.createEl('input', { attr: { type: 'date' } });
+		addRow.createEl('td'); // Last Done placeholder
+		
+		const addActionTd = addRow.createEl('td');
+		const addBtn = addActionTd.createEl('button', { text: 'Add', cls: 'add-btn' });
+		addBtn.onclick = async () => {
+			const name = nameInput.value.trim();
+			const freq = parseInt(freqInput.value);
+			const dueDate = dateInput.value;
+			const prio = parseInt(priorityInput.value) || 0;
+			if (!name) {
+				new Notice('Task Name is required!');
+				return;
+			}
+			await this.addNewTask(name, groupInput.value.trim(), isNaN(freq) ? 0 : freq, dueDate, prio);
+		};
+	}
+
+	async updateTaskPriority(task: MaintenanceTask, newPriority: number) {
+		const filePath = this.plugin.settings.maintenanceTaskFile;
+		if (!filePath) return;
+
+		const file = this.app.vault.getAbstractFileByPath(filePath);
+		if (file instanceof TFile) {
+			const content = await this.app.vault.read(file);
+			const lines = content.split('\n');
+			// Order: | Priority | Group | Task | Frequency | Next Due | Last Done |
+			const newRow = `| ${newPriority} | ${task.group} | ${task.name} | ${task.frequency} | ${task.nextDue} | ${task.lastDone} |`;
+			lines[task.lineIndex] = newRow;
+			await this.app.vault.modify(file, lines.join('\n'));
+			new Notice(`Updated priority for ${task.name}`);
+		}
+	}
+
+	async addNewTask(name: string, group: string, freq: number, customDueDate?: string, prio: number = 0) {
+		const filePath = this.plugin.settings.maintenanceTaskFile;
+		if (!filePath) return;
+
+		const file = this.app.vault.getAbstractFileByPath(filePath);
+		if (file instanceof TFile) {
+			const content = await this.app.vault.read(file);
+			const today = moment().format('YYYY-MM-DD');
+			
+			let nextDue: string;
+			if (customDueDate) {
+				nextDue = customDueDate;
+			} else if (freq > 0) {
+				nextDue = moment().add(freq, 'days').format('YYYY-MM-DD');
+			} else {
+				// Default to tomorrow if no freq and no due date
+				nextDue = moment().add(1, 'days').format('YYYY-MM-DD');
+			}
+
+			// Order: | Priority | Group | Task | Frequency | Next Due | Last Done |
+			const newRow = `| ${prio} | ${group || 'None'} | ${name} | ${freq} | ${nextDue} | ${today} |`;
+			
+			const updatedContent = content.trim() + '\n' + newRow;
+			await this.app.vault.modify(file, updatedContent);
+			new Notice(`Added new task: ${name}`);
+			this.render();
+		}
+	}
+
+	async markAsDone(task: MaintenanceTask) {
+		const filePath = this.plugin.settings.maintenanceTaskFile;
+		if (!filePath) return;
+
+		const file = this.app.vault.getAbstractFileByPath(filePath);
+		if (file instanceof TFile) {
+			const content = await this.app.vault.read(file);
+			const lines = content.split('\n');
+			
+			const today = moment().format('YYYY-MM-DD');
+			const nextDue = moment().add(task.frequency, 'days').format('YYYY-MM-DD');
+			
+			// Order: | Priority | Group | Task | Frequency | Next Due | Last Done |
+			const newStatusLine = `| ${task.priority} | ${task.group} | ${task.name} | ${task.frequency} | ${nextDue} | ${today} |`;
+			lines[task.lineIndex] = newStatusLine;
+
+			await this.app.vault.modify(file, lines.join('\n'));
+			
+			const historyPath = this.plugin.settings.maintenanceHistoryFile;
+			if (historyPath) {
+				let historyFile = this.app.vault.getAbstractFileByPath(historyPath);
+				const historyEntry = `| ${task.priority} | ${task.group} | ${task.name} | ${task.frequency} | ${nextDue} | ${today} |\n`;
+
+				if (!(historyFile instanceof TFile)) {
+					const header = `| Priority | Group | Task | Frequency | Next Due | Last Done |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n`;
+					await this.app.vault.create(historyPath, header + historyEntry);
+				} else {
+					const historyContent = await this.app.vault.read(historyFile);
+					await this.app.vault.modify(historyFile, historyContent.trim() + '\n' + historyEntry);
+				}
+			}
+
+			new Notice(`Marked "${task.name}" as done!`);
+		}
+	}
+}

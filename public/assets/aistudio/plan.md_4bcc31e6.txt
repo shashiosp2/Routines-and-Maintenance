@@ -1,0 +1,53 @@
+# Maintenance Calendar Obsidian Plugin Plan
+
+This plugin is inspired by Tody and Sweepy, bringing chore and maintenance tracking into Obsidian using Markdown files as the backend.
+
+## 1. Core Concepts
+- **Database**: A single user-defined Markdown file acts as the storage for all tasks.
+- **Tasks**: Each task has a group, frequency, last-done date, and difficulty.
+- **Visuals**: A dedicated UI tab in Obsidian displaying tasks with pastel status colors and a unified grid view.
+
+## 2. Technical Architecture
+- **Language**: TypeScript (Obsidian Plugin API).
+- **Storage**: Single Markdown file with a Markdown table.
+- **UI**: Vanilla JS for the custom View, rendered in a workspace leaf (tab).
+
+## 3. Implementation Phases
+
+### Phase 1: Project Setup
+- Initialize Obsidian plugin boilerplate.
+- Setup `manifest.json`, `main.ts`, `styles.css`, and `tsconfig.json`.
+
+### Phase 2: Settings & Data Layer
+- Implement Settings tab with one file path input.
+- Default path: `notes/maintenance-tasks-01.md`.
+- **Automation**:
+    - Clicking "Sure?" updates "Last Done" and "Next Due".
+    - **Add Task**: Ability to add new tasks via a blank row at the bottom of the UI table.
+
+### Phase 3: The UI View
+- Register a custom View type for "Maintenance Tasks".
+- Implement the "Maintenance Tasks" command to open the view in a new tab.
+- **Header**: Refresh button and current date (YYYY-MM-DD).
+- **Visual Style**: 
+    - Utilitarian grid view with pastel background colors.
+    - **Table Width**: Automatic column width based on content (no wrapping).
+- **Columns (New Order)**:
+    1. **Group**
+    2. **Task**
+    3. **Frequency**
+    4. **Days Due** (UI only)
+    5. **Next Due**
+    6. **Last Done**
+    7. **Action**
+- **Sorting**: Allow sorting by each column.
+- **Live Updates**: Plugin monitors the vault for file modifications and refreshes automatically.
+
+## 4. Markdown Table Format
+| Group | Task | Frequency | Next Due | Last Done |
+| :--- | :--- | :--- | :--- | :--- |
+| Cleaning | Vacuum Floors | 7 | 2026-04-08 | 2026-04-01 |
+
+## 5. Security & Safety
+- All data stays within the local Obsidian vault.
+- No external API calls.

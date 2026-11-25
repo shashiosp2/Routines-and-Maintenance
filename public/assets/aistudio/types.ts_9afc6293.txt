@@ -1,0 +1,11 @@
+export interface HorizonSettings {
+	maintenanceTaskFile: string;
+	maintenanceHistoryFile: string;
+	routinesFile: string;
+}
+
+export const DEFAULT_SETTINGS: HorizonSettings = {
+	maintenanceTaskFile: 'notes/maintenance-tasks-01.md',
+	maintenanceHistoryFile: 'notes/maintenance-tasks-01.history.md',
+	routinesFile: 'notes/routines.md'
+};

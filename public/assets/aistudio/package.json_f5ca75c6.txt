@@ -1,0 +1,15 @@
+{
+  "name": "obsidian-horizon",
+  "version": "1.0.0",
+  "description": "Unified maintenance tasks and routine player for Obsidian.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "esbuild src/main.ts --bundle --outfile=main.js --external:obsidian --format=cjs --watch",
+    "build": "esbuild src/main.ts --bundle --outfile=main.js --external:obsidian --format=cjs --minify"
+  },
+  "devDependencies": {
+    "esbuild": "^0.14.47",
+    "obsidian": "^0.15.0",
+    "typescript": "^4.7.4"
+  }
+}

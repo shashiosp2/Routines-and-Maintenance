@@ -1,0 +1,235 @@
+import {
+	App,
+	Notice,
+	Plugin,
+	PluginSettingTab,
+	Setting,
+	TFile,
+	WorkspaceLeaf,
+} from 'obsidian';
+import { 
+	MaintenanceTasksView, 
+	VIEW_TYPE_MAINTENANCE 
+} from './maintenance/maintenance';
+import { 
+	RoutineView, 
+	VIEW_TYPE_ROUTINE, 
+	RoutineUI 
+} from './routines/routines';
+import { 
+	HorizonSettings, 
+	DEFAULT_SETTINGS 
+} from './shared/types';
+
+export default class HorizonPlugin extends Plugin {
+	settings: HorizonSettings;
+	routineUIs: RoutineUI[] = [];
+
+	async onload() {
+		await this.loadSettings();
+
+		// Register Views
+		this.registerView(
+			VIEW_TYPE_MAINTENANCE,
+			(leaf) => new MaintenanceTasksView(leaf, this)
+		);
+		this.registerView(
+			VIEW_TYPE_ROUTINE,
+			(leaf) => new RoutineView(leaf, this)
+		);
+
+		// Add Ribbon Icons
+		this.addRibbonIcon('calendar-check', 'Maintenance Tasks', () => {
+			this.activateView(VIEW_TYPE_MAINTENANCE);
+		});
+		this.addRibbonIcon('clock', 'Routine Tracker', () => {
+			this.activateView(VIEW_TYPE_ROUTINE);
+		});
+
+		// Add Commands
+		this.addCommand({
+			id: 'open-maintenance-tasks',
+			name: 'Open Maintenance Tasks',
+			callback: () => this.activateView(VIEW_TYPE_MAINTENANCE)
+		});
+		this.addCommand({
+			id: 'open-routine-tracker',
+			name: 'Open Routine Tracker',
+			callback: () => this.activateView(VIEW_TYPE_ROUTINE)
+		});
+
+		// Register Routines Code Block
+		this.registerMarkdownCodeBlockProcessor("routines", (source, el, ctx) => {
+			const ui = new RoutineUI(el, this);
+			this.routineUIs.push(ui);
+			ui.loadRoutines();
+			
+			const interval = window.setInterval(() => {
+				if (!el.isConnected) {
+					window.clearInterval(interval);
+					this.routineUIs = this.routineUIs.filter(x => x !== ui);
+					return;
+				}
+				ui.onTick();
+			}, 1000);
+		});
+
+		// File Monitoring
+		this.registerEvent(
+			this.app.vault.on('modify', (file) => {
+				if (!(file instanceof TFile)) return;
+
+				if (file.path === this.settings.maintenanceTaskFile) {
+					const views = this.app.workspace.getLeavesOfType(VIEW_TYPE_MAINTENANCE);
+					views.forEach(leaf => {
+						if (leaf.view instanceof MaintenanceTasksView) {
+							leaf.view.render();
+						}
+					});
+				}
+
+				if (file.path === this.settings.routinesFile) {
+					this.routineUIs.forEach(ui => ui.loadRoutines());
+				}
+			})
+		);
+
+		this.addSettingTab(new HorizonSettingTab(this.app, this));
+	}
+
+	async loadSettings() {
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+	}
+
+	async saveSettings() {
+		await this.saveData(this.settings);
+	}
+
+	async activateView(viewType: string) {
+		const { workspace } = this.app;
+		let leaf = workspace.getLeavesOfType(viewType)[0];
+
+		if (!leaf) {
+			leaf = workspace.getLeaf('tab');
+			await leaf.setViewState({
+				type: viewType,
+				active: true,
+			});
+		}
+
+		workspace.revealLeaf(leaf);
+	}
+
+	// Helper methods for Routine Tracker (migrated from its main.ts)
+	async updateTaskStartTime(routineName: string, taskName: string, timestamp: number | null) {
+		const file = this.app.vault.getAbstractFileByPath(this.settings.routinesFile);
+		if (!(file instanceof TFile)) return;
+
+		let content = await this.app.vault.read(file);
+		const lines = content.split('\n');
+		let inRoutine = false;
+		let updated = false;
+
+		for (let i = 0; i < lines.length; i++) {
+			if (lines[i].startsWith('## ')) {
+				inRoutine = lines[i].slice(3).trim() === routineName;
+			}
+			if (inRoutine && lines[i].includes('|')) {
+				const parts = lines[i].split('|').map(p => p.trim());
+				if (parts.length >= 10 && parts[1] === taskName) {
+					parts[10] = timestamp ? timestamp.toString() : '';
+					lines[i] = parts.join(' | ').trim();
+					if (!lines[i].startsWith('|')) lines[i] = '| ' + lines[i];
+					if (!lines[i].endsWith('|')) lines[i] = lines[i] + ' |';
+					updated = true;
+					break;
+				}
+			}
+		}
+
+		if (updated) {
+			await this.app.vault.modify(file, lines.join('\n'));
+		}
+	}
+
+	async resetRoutineTimestamps(routineName: string) {
+		const file = this.app.vault.getAbstractFileByPath(this.settings.routinesFile);
+		if (!(file instanceof TFile)) return;
+
+		let content = await this.app.vault.read(file);
+		const lines = content.split('\n');
+		let inRoutine = false;
+		let updated = false;
+
+		for (let i = 0; i < lines.length; i++) {
+			if (lines[i].startsWith('## ')) {
+				inRoutine = lines[i].slice(3).trim() === routineName;
+			}
+			if (inRoutine && lines[i].includes('|')) {
+				const parts = lines[i].split('|').map(p => p.trim());
+				if (parts.length >= 10 && parts[1] !== 'Title' && !parts[1].startsWith(':--')) {
+					parts[10] = '';
+					lines[i] = parts.join(' | ').trim();
+					if (!lines[i].startsWith('|')) lines[i] = '| ' + lines[i];
+					if (!lines[i].endsWith('|')) lines[i] = lines[i] + ' |';
+					updated = true;
+				}
+			}
+		}
+
+		if (updated) {
+			await this.app.vault.modify(file, lines.join('\n'));
+		}
+	}
+}
+
+class HorizonSettingTab extends PluginSettingTab {
+	plugin: HorizonPlugin;
+
+	constructor(app: App, plugin: HorizonPlugin) {
+		super(app, plugin);
+		this.plugin = plugin;
+	}
+
+	display(): void {
+		const { containerEl } = this;
+		containerEl.empty();
+
+		containerEl.createEl('h2', { text: 'Obsidian Horizon Settings' });
+
+		containerEl.createEl('h3', { text: 'Maintenance Tasks' });
+		new Setting(containerEl)
+			.setName('Task File')
+			.setDesc('Path to the markdown file tracking your maintenance tasks.')
+			.addText(text => text
+				.setPlaceholder('notes/tasks.md')
+				.setValue(this.plugin.settings.maintenanceTaskFile)
+				.onChange(async (value) => {
+					this.plugin.settings.maintenanceTaskFile = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('History File')
+			.setDesc('Path to the markdown file where task completion history is saved.')
+			.addText(text => text
+				.setPlaceholder('notes/tasks.history.md')
+				.setValue(this.plugin.settings.maintenanceHistoryFile)
+				.onChange(async (value) => {
+					this.plugin.settings.maintenanceHistoryFile = value;
+					await this.plugin.saveSettings();
+				}));
+
+		containerEl.createEl('h3', { text: 'Routine Tracker' });
+		new Setting(containerEl)
+			.setName('Routines Markdown File')
+			.setDesc('The path to the markdown file containing your routines table.')
+			.addText(text => text
+				.setPlaceholder('notes/routines.md')
+				.setValue(this.plugin.settings.routinesFile)
+				.onChange(async (value) => {
+					this.plugin.settings.routinesFile = value;
+					await this.plugin.saveSettings();
+				}));
+	}
+}

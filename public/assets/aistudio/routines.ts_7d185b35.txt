@@ -1,0 +1,378 @@
+import {
+	App,
+	Editor,
+	MarkdownView,
+	Modal,
+	Notice,
+	Plugin,
+	PluginSettingTab,
+	Setting,
+	TFile,
+	ItemView,
+	WorkspaceLeaf,
+} from 'obsidian';
+
+// --- Data Models ---
+
+export interface RoutineTask {
+	name: string;
+	durationSeconds: number;
+	startTime?: number;
+}
+
+export interface Routine {
+	name: string;
+	tasks: RoutineTask[];
+}
+
+// --- App State ---
+
+export class RoutinePlayer {
+	routine: Routine;
+	currentIndex: number = 0;
+	timerSeconds: number = 0;
+	isRunning: boolean = false;
+	isCompleted: boolean = false;
+	overtime: boolean = false;
+
+	constructor(routine: Routine) {
+		this.routine = routine;
+		
+		// Determine current index based on last task with a startTime
+		let lastStartedIndex = -1;
+		for (let i = 0; i < this.routine.tasks.length; i++) {
+			if (this.routine.tasks[i].startTime) {
+				lastStartedIndex = i;
+			}
+		}
+
+		if (lastStartedIndex !== -1) {
+			this.currentIndex = lastStartedIndex;
+			this.isRunning = true;
+			this.updateTimer();
+		} else {
+			this.resetTimer();
+		}
+	}
+
+	updateTimer() {
+		const task = this.currentTask;
+		if (task && task.startTime) {
+			const elapsed = (Date.now() - task.startTime) / 1000;
+			if (elapsed > task.durationSeconds) {
+				this.overtime = true;
+				this.timerSeconds = Math.floor(elapsed - task.durationSeconds);
+			} else {
+				this.overtime = false;
+				this.timerSeconds = Math.floor(task.durationSeconds - elapsed);
+			}
+		}
+	}
+
+	resetTimer() {
+		if (this.currentIndex < this.routine.tasks.length) {
+			this.timerSeconds = this.routine.tasks[this.currentIndex].durationSeconds;
+			this.overtime = false;
+		} else {
+			this.isCompleted = true;
+		}
+	}
+
+	get currentTask(): RoutineTask | null {
+		return this.routine.tasks[this.currentIndex] || null;
+	}
+
+	tick() {
+		if (!this.isRunning || this.isCompleted) return;
+		this.updateTimer();
+	}
+
+	completeStep() {
+		this.currentIndex += 1;
+		if (this.currentIndex >= this.routine.tasks.length) {
+			this.isCompleted = true;
+			this.isRunning = false;
+		} else {
+			this.resetTimer();
+		}
+	}
+
+	skipStep() {
+		this.completeStep();
+	}
+}
+
+// --- Utilities ---
+
+export function formatTime(seconds: number): string {
+	const mins = Math.floor(Math.abs(seconds) / 60);
+	const secs = Math.abs(seconds) % 60;
+	return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+export function parseRoutines(content: string): Routine[] {
+	const routines: Routine[] = [];
+	const currentWeekday = new Date().getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+	const dayMap = [9, 3, 4, 5, 6, 7, 8];
+	const dayColumnIndex = dayMap[currentWeekday];
+
+	const sections = content.split(/^##\s+/m);
+	for (const section of sections) {
+		if (!section.trim()) continue;
+
+		const lines = section.trim().split('\n');
+		const routineName = lines[0].trim();
+		const tasks: RoutineTask[] = [];
+
+		for (const line of lines.slice(1)) {
+			if (line.includes('|')) {
+				const parts = line.split('|').map(p => p.trim());
+				if (parts.length >= 10) {
+					const name = parts[1];
+					if (['title', ':---', '---:'].includes(name.toLowerCase())) continue;
+
+					const duration = parseInt(parts[2]);
+					const enabled = parts[dayColumnIndex]?.toUpperCase() === 'Y';
+					const rawStartTime = parts[10];
+					const startTime = (rawStartTime && rawStartTime.trim() !== '') ? parseInt(rawStartTime) : undefined;
+
+					if (!isNaN(duration) && enabled) {
+						tasks.push({ 
+							name, 
+							durationSeconds: duration, 
+							startTime: (startTime && !isNaN(startTime)) ? startTime : undefined 
+						});
+					}
+				}
+			}
+		}
+
+		if (tasks.length > 0) {
+			routines.push({ name: routineName, tasks });
+		}
+	}
+	return routines;
+}
+
+// --- UI Components ---
+
+export class RoutineUI {
+	player: RoutinePlayer | null = null;
+	routines: Routine[] = [];
+	currentView: 'index' | 'play' | 'summary' = 'index';
+	containerEl: HTMLElement;
+	plugin: any;
+
+	constructor(containerEl: HTMLElement, plugin: any) {
+		this.containerEl = containerEl;
+		this.plugin = plugin;
+	}
+
+	async loadRoutines() {
+		const filePath = this.plugin.settings.routinesFile;
+		const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
+		if (!(file instanceof TFile)) {
+			this.routines = [];
+			return;
+		}
+
+		const content = await this.plugin.app.vault.read(file);
+		this.routines = parseRoutines(content);
+
+		// Check if any routine is already in progress
+		const activeRoutine = this.routines.find(r => r.tasks.some(t => t.startTime));
+		if (activeRoutine) {
+			this.player = new RoutinePlayer(activeRoutine);
+			this.currentView = 'play';
+		} else if (this.currentView === 'play') {
+			// Routine was completed or reset by another instance
+			this.currentView = 'index';
+			this.player = null;
+		}
+
+		this.render();
+	}
+
+	onTick() {
+		if (this.player && this.player.isRunning && !this.player.isCompleted) {
+			this.player.tick();
+			if (this.currentView === 'play') {
+				this.render();
+			}
+		}
+	}
+
+	render() {
+		this.containerEl.empty();
+		this.containerEl.addClass('routine-tracker-container');
+
+		if (this.currentView === 'index') {
+			this.renderIndex(this.containerEl);
+		} else if (this.currentView === 'play') {
+			this.renderPlay(this.containerEl);
+		} else if (this.currentView === 'summary') {
+			this.renderSummary(this.containerEl);
+		}
+	}
+
+	renderIndex(el: HTMLElement) {
+		const topBar = el.createEl('div', { cls: 'rt-top-bar' });
+		const reloadBtn = topBar.createEl('button', { cls: 'rt-icon-btn', title: 'Reload from Markdown' });
+		reloadBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>';
+		reloadBtn.onclick = () => this.loadRoutines();
+
+		const header = el.createEl('div', { cls: 'rt-header' });
+		header.createEl('h2', { text: 'My Routines' });
+
+		const scroll = el.createEl('div', { cls: 'rt-scroll' });
+		this.routines.forEach(routine => {
+			const card = scroll.createEl('div', { cls: 'rt-card' });
+			const info = card.createEl('div', { cls: 'rt-card-info' });
+			info.createEl('div', { text: routine.name, cls: 'rt-card-title' });
+			const totalMins = Math.floor(routine.tasks.reduce((acc, t) => acc + t.durationSeconds, 0) / 60);
+			info.createEl('div', { text: `${routine.tasks.length} tasks • ${totalMins} mins`, cls: 'rt-card-subtitle' });
+
+			const btn = card.createEl('button', { cls: 'rt-play-btn' });
+			btn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+			btn.onclick = async () => {
+				await this.plugin.updateTaskStartTime(routine.name, routine.tasks[0].name, Date.now());
+				// Force immediate load for this instance
+				await this.loadRoutines();
+			};
+		});
+	}
+
+	renderPlay(el: HTMLElement) {
+		if (!this.player) return;
+
+		const top = el.createEl('div', { cls: 'rt-play-top' });
+		const closeBtn = top.createEl('button', { cls: 'rt-icon-btn' });
+		closeBtn.innerHTML = '✕';
+		closeBtn.onclick = async () => {
+			await this.plugin.resetRoutineTimestamps(this.player!.routine.name);
+			this.currentView = 'index';
+			this.render();
+		};
+
+		const controls = top.createEl('div', { cls: 'rt-play-controls' });
+		const pauseBtn = controls.createEl('button', { cls: 'rt-icon-btn' });
+		pauseBtn.innerHTML = this.player.isRunning ? '⏸' : '▶';
+		pauseBtn.onclick = () => {
+			if (this.player) this.player.isRunning = !this.player.isRunning;
+			this.render();
+		};
+
+		const skipBtn = controls.createEl('button', { cls: 'rt-icon-btn' });
+		skipBtn.innerHTML = '⏭';
+		skipBtn.onclick = async () => {
+			if (this.player) {
+				const nextIndex = this.player.currentIndex + 1;
+				if (nextIndex < this.player.routine.tasks.length) {
+					await this.plugin.updateTaskStartTime(this.player.routine.name, this.player.routine.tasks[nextIndex].name, Date.now());
+				} else {
+					await this.plugin.resetRoutineTimestamps(this.player.routine.name);
+				}
+			}
+		};
+
+		const task = this.player.currentTask;
+		if (task) {
+			el.createEl('div', { text: `${Math.floor(task.durationSeconds / 60)} min. scheduled`, cls: 'rt-scheduled' });
+			el.createEl('div', { text: task.name, cls: 'rt-task-name' });
+
+			const timer = el.createEl('div', { text: formatTime(this.player.timerSeconds), cls: 'rt-timer' });
+			if (this.player.overtime) timer.addClass('rt-overtime');
+
+			const progressContainer = el.createEl('div', { cls: 'rt-progress-container' });
+			const progress = progressContainer.createEl('div', { cls: 'rt-progress-bar' });
+			const percent = this.player.overtime ? 0 : (this.player.timerSeconds / task.durationSeconds) * 100;
+			progress.style.width = `${percent}%`;
+
+			const completeBtn = el.createEl('button', { text: 'COMPLETE STEP', cls: 'rt-complete-btn' });
+			completeBtn.onclick = async () => {
+				if (this.player) {
+					const nextIndex = this.player.currentIndex + 1;
+					if (nextIndex < this.player.routine.tasks.length) {
+						await this.plugin.updateTaskStartTime(this.player.routine.name, this.player.routine.tasks[nextIndex].name, Date.now());
+					} else {
+						// Complete the last task - reset timestamps so everyone knows we're done
+						await this.plugin.resetRoutineTimestamps(this.player.routine.name);
+						this.currentView = 'summary';
+						this.render();
+					}
+				}
+			};
+
+			const taskList = el.createEl('div', { cls: 'rt-task-list' });
+			this.player.routine.tasks.forEach((t, i) => {
+				const row = taskList.createEl('div', { cls: 'rt-task-row' });
+				if (i < this.player!.currentIndex) row.addClass('rt-past');
+				else if (i === this.player!.currentIndex) row.addClass('rt-current');
+
+				const left = row.createEl('div', { cls: 'rt-task-row-left' });
+				left.createEl('span', { text: i < this.player!.currentIndex ? '✓' : '○' });
+				left.createEl('span', { text: t.name });
+
+				row.createEl('div', { text: formatTime(t.durationSeconds), cls: 'rt-task-row-time' });
+			});
+		}
+	}
+
+	renderSummary(el: HTMLElement) {
+		el.createEl('div', { text: 'Amazing job!', cls: 'rt-summary-title' });
+		el.createEl('div', { text: 'You have completed your routine.', cls: 'rt-summary-subtitle' });
+
+		const stats = el.createEl('div', { cls: 'rt-summary-stats' });
+		const taskStat = stats.createEl('div');
+		taskStat.createEl('div', { text: 'TASKS', cls: 'rt-stat-label' });
+		taskStat.createEl('div', { text: this.player?.routine.tasks.length.toString(), cls: 'rt-stat-value' });
+
+		const timeStat = stats.createEl('div');
+		timeStat.createEl('div', { text: 'TIME', cls: 'rt-stat-label' });
+		const totalMins = Math.floor(this.player!.routine.tasks.reduce((acc, t) => acc + t.durationSeconds, 0) / 60);
+		timeStat.createEl('div', { text: `${totalMins}m`, cls: 'rt-stat-value' });
+
+		const doneBtn = el.createEl('button', { text: 'DONE', cls: 'rt-done-btn' });
+		doneBtn.onclick = async () => {
+			if (this.player) {
+				await this.plugin.resetRoutineTimestamps(this.player.routine.name);
+			}
+			this.currentView = 'index';
+			this.render();
+		};
+	}
+}
+
+export const VIEW_TYPE_ROUTINE = 'routine-tracker-view';
+
+export class RoutineView extends ItemView {
+	ui?: RoutineUI;
+	plugin: any;
+
+	constructor(leaf: WorkspaceLeaf, plugin: any) {
+		super(leaf);
+		this.plugin = plugin;
+	}
+
+	getViewType() {
+		return VIEW_TYPE_ROUTINE;
+	}
+
+	getDisplayText() {
+		return 'Routine Tracker';
+	}
+
+	async onOpen() {
+		const container = this.containerEl.children[1] as HTMLElement;
+		this.ui = new RoutineUI(container, this.plugin);
+		this.plugin.routineUIs.push(this.ui);
+		this.ui.loadRoutines();
+		this.plugin.registerInterval(window.setInterval(() => {
+			if (!this.containerEl.isConnected) {
+				this.plugin.routineUIs = this.plugin.routineUIs.filter((x: any) => x !== this.ui);
+				return;
+			}
+			this.ui?.onTick();
+		}, 1000));
+	}
+}

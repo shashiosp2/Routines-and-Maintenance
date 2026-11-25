@@ -1,0 +1,10 @@
+{
+  "id": "obsidian-horizon",
+  "name": "Obsidian Horizon",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "Unified maintenance tasks and routine player for Obsidian.",
+  "author": "Gemini CLI",
+  "authorUrl": "https://github.com/google-gemini/gemini-cli",
+  "isDesktopOnly": false
+}

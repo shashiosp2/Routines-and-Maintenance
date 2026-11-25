@@ -1,0 +1,45 @@
+# Obsidian Horizon - Context & Guidelines
+
+**Obsidian Horizon** is a unified toolkit for personal organization, combining recurring maintenance task tracking and interactive routine management into a single Obsidian plugin.
+
+## Project Overview
+- **Purpose**: Manage recurring chores and timed routines directly within Obsidian.
+- **Technologies**: TypeScript, Obsidian API, esbuild for bundling.
+- **Architecture**:
+    - `src/main.ts`: Plugin entry point, registers views, commands, and code block processors.
+    - `src/maintenance/`: Maintenance task logic, UI (Table view), and styling.
+    - `src/routines/`: Routine tracker logic, UI (Timer player), and styling.
+    - `src/shared/`: Shared TypeScript interfaces and default settings.
+
+## Building and Running
+The project uses `npm` for dependency management and `esbuild` for bundling the source code into a single `main.js` file.
+
+- **Development**: `npm run dev` (bundles in watch mode)
+- **Production Build**: `npm run build` (minified bundle)
+- **Deployment**: Copy `main.js`, `manifest.json`, and `styles.css` to the Obsidian vault plugin folder (`.obsidian/plugins/obsidian-horizon`).
+
+## Development Conventions
+
+### Data Storage
+- **Markdown Tables**: Both maintenance tasks and routines are parsed from and saved to standard Markdown tables in dedicated files.
+- **File Monitoring**: The plugin monitors changes to these Markdown files to update its views in real-time.
+
+### Obsidian API Usage
+- **Views**: Uses `registerView` for dedicated full-tab views (Maintenance and Routines).
+- **Code Blocks**: Uses `registerMarkdownCodeBlockProcessor` to embed routine players in notes via ` ```routines ` blocks.
+- **Settings**: Follows the `PluginSettingTab` pattern for configuration.
+
+### Styling
+- **Source CSS**: Custom styles are modularized in `src/maintenance/maintenance.css` and `src/routines/routines.css`.
+- **Distribution CSS**: `styles.css` in the root directory is the entry point for Obsidian and contains the combined styles from the source files. 
+- **Management**: Styles must be manually synchronized or concatenated from the source files into the root `styles.css` as there is currently no automated build step for CSS.
+
+## Key Files
+- `src/main.ts`: Main plugin class (`HorizonPlugin`).
+- `src/maintenance/maintenance.ts`: logic for parsing chores and rendering the task table.
+- `src/routines/routines.ts`: Logic for the routine timer and task management.
+- `src/maintenance/maintenance.css`: Styles for the maintenance task view.
+- `src/routines/routines.css`: Styles for the routine tracker view.
+- `styles.css`: Combined stylesheet for the Obsidian plugin.
+- `manifest.json`: Metadata and entry point definition for Obsidian.
+- `package.json`: Build scripts and dependencies (`esbuild`, `obsidian`, `typescript`).

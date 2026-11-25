@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Routinary</string>
+    <string name="nav_maintenance">Maintenance</string>
+    <string name="nav_routines">Routines</string>
+    <string name="nav_settings">Settings</string>
+    <string name="cd_reload">Reload from Markdown</string>
+    <string name="cd_history">View completion history</string>
+    <string name="cd_settings">Open settings</string>
+    <string name="cd_add_task">Add maintenance task</string>
+    <string name="cd_play_routine">Start routine</string>
+    <string name="cd_close_routine">Close and reset routine</string>
+    <string name="cd_pause_routine">Pause routine</string>
+    <string name="cd_resume_routine">Resume routine</string>
+    <string name="cd_skip_step">Skip current step</string>
+    <string name="cd_back">Navigate back</string>
+</resources>
